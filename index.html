@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Measurement-Integrated Inventory Tool</title>
+    <!-- stlite: Streamlit compiled to WebAssembly. Pinned version for reproducibility. -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@stlite/browser@0.76.0/build/stlite.css"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@0.76.0/build/stlite.js";
+
+      mount(
+        {
+          requirements: ["numpy", "pandas", "scipy", "openpyxl", "matplotlib"],
+          entrypoint: "app.py",
+          files: {
+            // These are fetched at load time and written into the in-browser
+            // virtual filesystem. Keep them alongside index.html when you deploy.
+            "app.py": { url: "./app.py" },
+            "mii_model.py": { url: "./mii_model.py" },
+            "figures.py": { url: "./figures.py" },
+            "Inventory_Template.xlsx": { url: "./Inventory_Template.xlsx" },
+            "Inventory_Template_FILLED.xlsx": { url: "./Inventory_Template_FILLED.xlsx" },
+            "eemdl_logo.png": { url: "./eemdl_logo.png" },
+            ".streamlit/config.toml": { url: "./.streamlit/config.toml" },
+          },
+        },
+        document.getElementById("root")
+      );
+    </script>
+  </body>
+</html>
