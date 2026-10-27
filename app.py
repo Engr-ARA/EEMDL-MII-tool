@@ -110,8 +110,8 @@ uploaded = st.file_uploader("Upload your filled-in input template (.xlsx)", type
 
 if uploaded is None:
     # Do not keep showing results from a file the user has removed.
-    st.session_state.pop("mii_result", None)
-    st.session_state.pop("mii_run_key", None)
+    for _key in ("mii_result", "mii_run_key"):
+        st.session_state.pop(_key, None)
     st.info("Upload a completed template to begin. Download a blank one from the sidebar.")
     st.stop()
 
@@ -126,33 +126,35 @@ requested_resamples = 2000 if quick else 9999
 use_posterior = estimate_type.startswith("Posterior")
 run_key = (file_hash, requested_resamples, int(seed), use_posterior)
 
-run_clicked = st.button("Run MII model", type="primary", use_container_width=True)
+run_clicked = st.button(
+    "Run MII model",
+    type="primary",
+    use_container_width=True,
+)
 
 if run_clicked:
     cfg = Config(
         n_resamples=requested_resamples,
         random_state=int(seed),
     )
-    # The uploaded bytes are wrapped in a fresh buffer so pandas always starts
-    # reading from byte 0, including after Streamlit reruns.
     model_input = io.BytesIO(file_bytes)
-    with st.spinner("Running bootstrap + Monte Carlo... Please keep this tab open."):
-        try:
-            result = run_inventory(
-                model_input,
-                config=cfg,
-                use_posterior=use_posterior,
-                preserve_run_settings=True,
-            )
-        except Exception as e:
-            st.error(f"Could not process the file: {e}")
-            st.exception(e)
-            st.stop()
+
+    try:
+        result = run_inventory(
+            model_input,
+            config=cfg,
+            use_posterior=use_posterior,
+            preserve_run_settings=True,
+        )
+    except Exception as e:
+        st.error(f"Could not process the file: {e}")
+        st.exception(e)
+        st.stop()
 
     st.session_state["mii_result"] = result
     st.session_state["mii_run_key"] = run_key
     st.success(
-        f"Model run complete — {result.config.n_resamples:,} bootstrap/Monte Carlo iterations used."
+        f"✓ Model run complete — {result.config.n_resamples:,} bootstrap/Monte Carlo iterations used."
     )
 
 # Keep the completed result visible when users click download buttons, change
@@ -171,6 +173,7 @@ if stored_key != run_key:
     )
 
 cfg = result.config
+
 
 import figures as figmod
 
