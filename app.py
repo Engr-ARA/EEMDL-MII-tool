@@ -8,6 +8,7 @@ Thin UI layer over mii_model.run_inventory(). Runs identically as:
 Nothing here does computation itself — all modeling lives in mii_model.py.
 """
 import io
+import hashlib
 import pandas as pd
 import streamlit as st
 
@@ -43,10 +44,12 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-try:
-    st.image("eemdl_logo.png", width=320)
-except Exception:
-    pass
+# Load the logo directly from the GitHub Pages/static site instead of copying
+# it into stlite's in-browser virtual filesystem at startup.
+st.markdown(
+    '<img src="./eemdl_logo.png" alt="EEMDL logo" style="width:320px;max-width:100%;height:auto;">',
+    unsafe_allow_html=True,
+)
 
 st.title("Measurement-Integrated Inventory Tool For Compressor Station")
 # st.caption(
@@ -90,46 +93,84 @@ with st.sidebar:
 
     st.divider()
     st.markdown("**Need the template?**")
-    _xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    try:
-        with open("Inventory_Template.xlsx", "rb") as f:
-            st.download_button("Download blank template",
-                               f.read(), "Inventory_Template.xlsx",
-                               mime=_xlsx_mime)
-    except FileNotFoundError:
-        st.info("Template file not bundled with this deployment.")
-    # Filled sample so first-time testers can run the tool immediately.
-    try:
-        with open("Inventory_Template_FILLED.xlsx", "rb") as f:
-            st.download_button("Download filled sample (test data)",
-                               f.read(), "Inventory_Template_FILLED.xlsx",
-                               mime=_xlsx_mime)
-        st.caption("Sample contains synthetic data for testing only.")
-    except FileNotFoundError:
-        pass
+    # Direct static links keep the two Excel workbooks out of stlite's startup
+    # virtual-filesystem download. They are fetched only if the user clicks.
+    st.markdown(
+        '<a href="./Inventory_Template.xlsx" download>Download blank template</a>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<a href="./Inventory_Template_FILLED.xlsx" download>Download filled sample (test data)</a>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Sample contains synthetic data for testing only.")
 
-# ---- Main: upload -------------------------------------------------------
+# ---- Main: upload + explicit run -----------------------------------------
 uploaded = st.file_uploader("Upload your filled-in input template (.xlsx)", type=["xlsx"])
 
 if uploaded is None:
+    # Do not keep showing results from a file the user has removed.
+    st.session_state.pop("mii_result", None)
+    st.session_state.pop("mii_run_key", None)
     st.info("Upload a completed template to begin. Download a blank one from the sidebar.")
     st.stop()
 
-# ---- Run ----------------------------------------------------------------
-cfg = Config(
-    n_resamples=2000 if quick else 9999,
-    random_state=int(seed),
-)
-use_posterior = estimate_type.startswith("Posterior")
+file_bytes = uploaded.getvalue()
+file_size_kb = len(file_bytes) / 1024
+st.success(f"File loaded: {uploaded.name} ({file_size_kb:,.1f} KB)")
 
-with st.spinner("Running bootstrap + Monte Carlo… (a full run can take 1–2 minutes in-browser)"):
-    try:
-        # run_inventory accepts a path or a file-like buffer (pd.ExcelFile handles both)
-        result = run_inventory(uploaded, config=cfg, use_posterior=use_posterior)
-    except Exception as e:
-        st.error(f"Could not process the file: {e}")
-        st.exception(e)
-        st.stop()
+# A hash lets us tell whether the selected file/settings differ from the result
+# currently stored in this browser session.
+file_hash = hashlib.sha256(file_bytes).hexdigest()
+requested_resamples = 2000 if quick else 9999
+use_posterior = estimate_type.startswith("Posterior")
+run_key = (file_hash, requested_resamples, int(seed), use_posterior)
+
+run_clicked = st.button("Run MII model", type="primary", use_container_width=True)
+
+if run_clicked:
+    cfg = Config(
+        n_resamples=requested_resamples,
+        random_state=int(seed),
+    )
+    # The uploaded bytes are wrapped in a fresh buffer so pandas always starts
+    # reading from byte 0, including after Streamlit reruns.
+    model_input = io.BytesIO(file_bytes)
+    with st.spinner("Running bootstrap + Monte Carlo... Please keep this tab open."):
+        try:
+            result = run_inventory(
+                model_input,
+                config=cfg,
+                use_posterior=use_posterior,
+                preserve_run_settings=True,
+            )
+        except Exception as e:
+            st.error(f"Could not process the file: {e}")
+            st.exception(e)
+            st.stop()
+
+    st.session_state["mii_result"] = result
+    st.session_state["mii_run_key"] = run_key
+    st.success(
+        f"Model run complete — {result.config.n_resamples:,} bootstrap/Monte Carlo iterations used."
+    )
+
+# Keep the completed result visible when users click download buttons, change
+# tabs, or otherwise trigger a normal Streamlit rerun.
+result = st.session_state.get("mii_result")
+stored_key = st.session_state.get("mii_run_key")
+
+if result is None:
+    st.info("The file is ready. Select your run settings, then click **Run MII model**.")
+    st.stop()
+
+if stored_key != run_key:
+    st.warning(
+        "The uploaded file or run settings have changed since the displayed results were generated. "
+        "Click **Run MII model** to update the results."
+    )
+
+cfg = result.config
 
 import figures as figmod
 

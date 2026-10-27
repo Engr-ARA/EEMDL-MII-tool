@@ -390,7 +390,7 @@ def station_other_estimate(row, sources, cfg, use_posterior=True,
 # Top-level entry point
 # ---------------------------------------------------------------------------
 
-def run_inventory(template_path, config=None, use_posterior=True):
+def run_inventory(template_path, config=None, use_posterior=True, preserve_run_settings=False):
     cfg = config or Config()
 
     xls = pd.ExcelFile(template_path)
@@ -422,10 +422,13 @@ def run_inventory(template_path, config=None, use_posterior=True):
 
     if SHEET_CONFIG in xls.sheet_names:
         cfg_df = xls.parse(SHEET_CONFIG).set_index("param")["value"]
-        if "n_resamples" in cfg_df.index:
-            cfg.n_resamples = int(cfg_df["n_resamples"])
-        if "random_state" in cfg_df.index:
-            cfg.random_state = int(cfg_df["random_state"])
+        # Browser/UI callers can lock the interactive run controls while still
+        # allowing operational assumptions below to come from the workbook.
+        if not preserve_run_settings:
+            if "n_resamples" in cfg_df.index:
+                cfg.n_resamples = int(cfg_df["n_resamples"])
+            if "random_state" in cfg_df.index:
+                cfg.random_state = int(cfg_df["random_state"])
         if "survey_interval_hours" in cfg_df.index:
             cfg.survey_interval_hours = float(cfg_df["survey_interval_hours"])
         if "surveys_per_year" in cfg_df.index:
